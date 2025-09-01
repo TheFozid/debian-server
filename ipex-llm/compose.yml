@@ -1,0 +1,144 @@
+x-llamacpp-base: &llamacpp-base
+  image: intelanalytics/ipex-llm-inference-cpp-xpu:latest
+  mem_limit: 20g
+  restart: unless-stopped
+  networks:
+    - llm
+  devices:
+    - /dev/dri:/dev/dri
+  volumes:
+    - llamacpp-volume:/.llama-cpp
+    - /home/cloud/.containers/llm/models:/models
+  environment:
+    - no_proxy=localhost,127.0.0.1
+    - DEVICE=iGPU
+    - ZES_ENABLE_SYSMAN=1
+    - SYCL_PI_LEVEL_ZERO_USE_IMMEDIATE_COMMANDLISTS=1
+    - OMP_NUM_THREADS=4
+    - KMP_AFFINITY=granularity=fine,compact,1,0
+    - IPEX_LLM_XMX_DISABLED=1
+    - BATCH_SIZE=4
+    - SYCL_CACHE_PERSISTENT=1
+    - KMP_BLOCKTIME=0
+    - IPEX_LLM_NUM_CTX=4096
+  deploy:
+    resources:
+      reservations:
+        cpus: '1.8'
+        memory: '10g'
+      limits:
+        cpus: '4.0'
+        memory: '20g'
+
+services:
+
+  llamacpp-model1:
+    <<: *llamacpp-base
+    container_name: llamacpp-mode11
+    ports:
+      - 11431:11434
+    command: |
+      /bin/sh -c '
+        mkdir -p /llm/llama-cpp &&
+        cd /llm/llama-cpp &&
+        init-llama-cpp &&
+        exec ./llama-server \
+          --model /models/llama3.2_1b-instruct-q6_K.gguf \
+          --alias llama3.2_1b \
+          --host 0.0.0.0 \
+          --port 11431 \
+          --threads 4 \
+          --threads-batch 4 \
+          --cpu-range 0-3 \
+          --ctx-size 4096 \
+          --batch-size 4 \
+          --ubatch-size 4 \
+          --prio 1 \
+          --poll 50 \
+          --n-gpu-layers 60 \
+          --mlock \
+          --split-mode none \
+          --no-mmap \
+      '
+
+  llamacpp-model2:
+    <<: *llamacpp-base
+    container_name: llamacpp-model2
+    ports:
+      - 11432:11434
+    command: |
+      /bin/sh -c '
+        mkdir -p /llm/llama-cpp &&
+        cd /llm/llama-cpp &&
+        init-llama-cpp &&
+        exec ./llama-server \
+          --model /models/llama3_8b-instruct-q4_K_M.gguf \
+          --alias llama3_8b \
+          --host 0.0.0.0 \
+          --port 11432 \
+          --threads 4 \
+          --threads-batch 4 \
+          --cpu-range 0-3 \
+          --ctx-size 4096 \
+          --batch-size 4 \
+          --ubatch-size 4 \
+          --prio 1 \
+          --poll 50 \
+          --n-gpu-layers 30 \
+          --mlock \
+          --split-mode none \
+          --no-mmap \
+      '
+
+  llamacpp-model3:
+    <<: *llamacpp-base
+    container_name: llamacpp-model3
+    ports:
+      - 11433:11434
+    command: |
+      /bin/sh -c '
+        mkdir -p /llm/llama-cpp &&
+        cd /llm/llama-cpp &&
+        init-llama-cpp &&
+        exec ./llama-server \
+          --model /models/qwen2.5-coder_3b-instruct-q5_K_M.gguf \
+          --alias qwen2.5-coder_3b \
+          --host 0.0.0.0 \
+          --port 11433 \
+          --threads 4 \
+          --threads-batch 4 \
+          --cpu-range 0-3 \
+          --ctx-size 4096 \
+          --batch-size 4 \
+          --ubatch-size 4 \
+          --prio 1 \
+          --poll 50 \
+          --n-gpu-layers 45 \
+          --mlock \
+          --split-mode none \
+          --no-mmap \
+      '
+
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:latest
+    container_name: open-webui
+    mem_limit: 1g
+    networks:
+      - llm
+    volumes:
+      - open-webui-volume:/app/backend/data
+    depends_on:
+      - llamacpp-model1
+    ports:
+      - 4040:8080
+    environment:
+      - WEBUI_AUTH=True
+      - ENABLE_OPENAI_API=True
+    restart: unless-stopped
+
+volumes:
+  llamacpp-volume: {}
+  open-webui-volume: {}
+
+networks:
+  llm:
